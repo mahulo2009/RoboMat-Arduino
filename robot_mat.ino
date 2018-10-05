@@ -6,6 +6,7 @@
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/Range.h>
+#include <rosserial_arduino/Test.h>
 #include "network_connection.h"
 #include <DifferentialWheeledRobot.h>
 #include <Pid.h>
@@ -37,6 +38,12 @@ void setupWiFi() {
 //Robot
 DifferentialWheeledRobot * robot = 0;
 
+WheelEncoder * wheel_left;
+Pid * pid_left;
+
+WheelEncoder * wheel_right;
+Pid * pid_right;
+
 //Ros node handler
 ros::NodeHandle nh;
 
@@ -54,6 +61,12 @@ ros::Publisher odom_pub("/car/odom", &odom_nav_msg);
 sensor_msgs::Range ultrasonic_msg;   
 ros::Publisher pub_ultrasonic("/car/ultrasound", &ultrasonic_msg);      
 
+geometry_msgs::Vector3 pid_telemetry_wheel_1_msg;              
+ros::Publisher pid_telemetry_wheel_1_pub("/car/pid_telemetry_wheel_1_msg", &pid_telemetry_wheel_1_msg); 
+
+geometry_msgs::Vector3 pid_telemetry_wheel_2_msg;              
+ros::Publisher pid_telemetry_wheel_2_pub("/car/pid_telemetry_wheel_2_msg", &pid_telemetry_wheel_2_msg); 
+
 tf::TransformBroadcaster broadcaster;
 geometry_msgs::TransformStamped odom_trans;
 geometry_msgs::TransformStamped ultrasonic_trans;   
@@ -61,6 +74,31 @@ geometry_msgs::Twist odom_geometry_msg;
 
 ros::Time current_time = nh.now();
 ros::Time last_time = current_time;
+
+
+using rosserial_arduino::Test;
+void callback(const Test::Request & req, Test::Response & res){
+  res.output = "hello";
+
+  float pid_kp, pid_ki, pid_kd;
+  if (! nh.getParam("/robomat/pid_kp", &pid_kp) ) 
+    { pid_kp = 1.0;};
+  if (! nh.getParam("/robomat/pid_ki", &pid_ki) ) 
+    { pid_ki = 0.0;};
+  if (! nh.getParam("/robomat/pid_kd", &pid_kd) ) 
+    { pid_kd = 0.0;};
+
+
+  pid_left->reset();
+  pid_left->setKp(pid_kp);
+  pid_left->setKi(pid_ki);
+  pid_left->setKd(pid_kd);
+
+  wheel_left->stop();
+  wheel_left->move(15.0);
+}
+
+ros::ServiceServer<Test::Request, Test::Response> server_1("test_srv",&callback);
 
 void setup() {
   //Setup Serial line.
@@ -76,6 +114,9 @@ void setup() {
   nh.subscribe(cmd_vel_sub);
   nh.advertise(odom_pub);
   nh.advertise(pub_ultrasonic);
+  nh.advertise(pid_telemetry_wheel_1_pub);
+  nh.advertise(pid_telemetry_wheel_2_pub);
+  nh.advertiseService(server_1);
 
   //Configure ultrasonic
   ultrasonic_msg.radiation_type = sensor_msgs::Range::ULTRASOUND;
@@ -133,7 +174,7 @@ void setup() {
     { robot_wheel_radious = 0.0325;};
   
   //Pid Left
-  Pid * pid_left = new Pid();
+  pid_left = new Pid();
   pid_left->setMaxWindup(max_speed); //TODO
   pid_left->setAlpha(1.0);
   pid_left->setKp(pid_kp);
@@ -145,14 +186,14 @@ void setup() {
   encoder_left->attach(pin_encoder_left);
 
   //Wheel Left
-  WheelEncoder * wheel_left = new WheelEncoder(max_speed);
+  wheel_left = new WheelEncoder(max_speed);
   wheel_left->attachPower(pin_power_left,power_min,power_max);
   wheel_left->attachDirection(pin_direction_left);
   wheel_left->attachEncoder(encoder_left);
   wheel_left->attachPid(pid_left);
   
   //Pid Right
-  Pid * pid_right = new Pid();
+  pid_right = new Pid();
   pid_right->setMaxWindup(max_speed); //TODO
   pid_right->setAlpha(1.0);
   pid_right->setKp(pid_kp);
@@ -164,7 +205,7 @@ void setup() {
   encoder_right->attach(pin_encoder_right);
 
   //Wheel Right
-  WheelEncoder * wheel_right = new WheelEncoder(max_speed);
+  wheel_right = new WheelEncoder(max_speed);
   wheel_right->attachPower(pin_power_right,power_min,power_max);
   wheel_right->attachDirection(pin_direction_right);
   wheel_right->attachEncoder(encoder_right);
@@ -189,7 +230,17 @@ void loop() {
     current_time = nh.now();
     double dt = current_time.toSec() - last_time.toSec();
     
-    robot->update(dt);   
+    robot->update(dt);
+
+    pid_telemetry_wheel_1_msg.x=wheel_left->getTargetVelocity();
+    pid_telemetry_wheel_1_msg.y=wheel_left->getVelocity();
+    pid_telemetry_wheel_1_msg.z=wheel_left->getDemandedVelocity();
+    pid_telemetry_wheel_1_pub.publish(&pid_telemetry_wheel_1_msg);   
+
+    pid_telemetry_wheel_2_msg.x=wheel_right->getTargetVelocity();
+    pid_telemetry_wheel_2_msg.y=wheel_right->getVelocity();
+    pid_telemetry_wheel_2_msg.z=wheel_right->getDemandedVelocity();
+    pid_telemetry_wheel_2_pub.publish(&pid_telemetry_wheel_2_msg);   
 
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionFromYaw(robot->getTheta()); //TODO REVIEW THIS THE ANGLE IS NOT CORRECT
     // tf odom->base_link
@@ -238,7 +289,7 @@ void loop() {
     //Ros spin once
     nh.spinOnce(); 
     //Delay
-    delay(500);  
+    delay(100);  //TODO REDUCE THIS
   } 
 }
 
