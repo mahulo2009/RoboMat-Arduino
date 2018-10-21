@@ -5,6 +5,8 @@
 #include <tf/transform_broadcaster.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Vector3Stamped.h>
+#include <geometry_msgs/Pose2D.h>
 #include <sensor_msgs/Range.h>
 #include <rosserial_arduino/Test.h>
 #include "network_connection.h"
@@ -13,6 +15,7 @@
 #include <Encoder.h>
 #include <WheelEncoder.h>
 #include <Sonar.h>
+#include <Servo.h>
 
 #define PIN_SONAR_TRIGGER 16
 #define PIN_SONAR_ECHO 15
@@ -55,16 +58,24 @@ void cmd_velCallback( const geometry_msgs::Twist& CVel) {
 }
 ros::Subscriber<geometry_msgs::Twist> cmd_vel_sub("/car/cmd_vel", &cmd_velCallback );
 
+void sonar_pose_callback( const geometry_msgs::Pose2D & sonar_pose) {
+  nh.logdebug("sonar_pose_callback");
+  if (robot != 0 ) {
+    robot->sonarTo(sonar_pose.theta);
+  }
+}
+ros::Subscriber<geometry_msgs::Pose2D> sonar_pose_sub("/car/sonar_pose", &sonar_pose_callback );
+
 nav_msgs::Odometry odom_nav_msg;              
 ros::Publisher odom_pub("/car/odom", &odom_nav_msg); 
 
 sensor_msgs::Range ultrasonic_msg;   
 ros::Publisher pub_ultrasonic("/car/ultrasound", &ultrasonic_msg);      
 
-geometry_msgs::Vector3 pid_telemetry_wheel_1_msg;              
+geometry_msgs::Vector3Stamped pid_telemetry_wheel_1_msg;              
 ros::Publisher pid_telemetry_wheel_1_pub("/car/pid_telemetry_wheel_1_msg", &pid_telemetry_wheel_1_msg); 
 
-geometry_msgs::Vector3 pid_telemetry_wheel_2_msg;              
+geometry_msgs::Vector3Stamped pid_telemetry_wheel_2_msg;              
 ros::Publisher pid_telemetry_wheel_2_pub("/car/pid_telemetry_wheel_2_msg", &pid_telemetry_wheel_2_msg); 
 
 tf::TransformBroadcaster broadcaster;
@@ -95,7 +106,8 @@ void callback(const Test::Request & req, Test::Response & res){
   pid_left->setKd(pid_kd);
 
   wheel_left->stop();
-  wheel_left->move(15.0);
+  delay(1000);
+  wheel_left->move(18.0);
 }
 
 ros::ServiceServer<Test::Request, Test::Response> server_1("test_srv",&callback);
@@ -112,6 +124,7 @@ void setup() {
   nh.initNode();
   broadcaster.init(nh);
   nh.subscribe(cmd_vel_sub);
+  nh.subscribe(sonar_pose_sub);
   nh.advertise(odom_pub);
   nh.advertise(pub_ultrasonic);
   nh.advertise(pid_telemetry_wheel_1_pub);
@@ -211,10 +224,15 @@ void setup() {
   wheel_right->attachEncoder(encoder_right);
   wheel_right->attachPid(pid_right);
 
+  //Servo
+  Servo * servo = new Servo();
+  servo->attach(13);
+
   //Sonar 
   Sonar * sonar = new Sonar();
   sonar->attachTrigger(PIN_SONAR_TRIGGER);
   sonar->attachEcho(PIN_SONAR_ECHO);
+  sonar->attachServo(servo);
 
   //Robot
   robot = new DifferentialWheeledRobot(robot_wheel_separation,robot_wheel_radious);
@@ -232,14 +250,16 @@ void loop() {
     
     robot->update(dt);
 
-    pid_telemetry_wheel_1_msg.x=wheel_left->getTargetVelocity();
-    pid_telemetry_wheel_1_msg.y=wheel_left->getVelocity();
-    pid_telemetry_wheel_1_msg.z=wheel_left->getDemandedVelocity();
+    pid_telemetry_wheel_1_msg.header.stamp = current_time;
+    pid_telemetry_wheel_1_msg.vector.x=wheel_left->getTargetVelocity();
+    pid_telemetry_wheel_1_msg.vector.y=wheel_left->getVelocity();
+    pid_telemetry_wheel_1_msg.vector.z=wheel_left->getDemandedVelocity();
     pid_telemetry_wheel_1_pub.publish(&pid_telemetry_wheel_1_msg);   
 
-    pid_telemetry_wheel_2_msg.x=wheel_right->getTargetVelocity();
-    pid_telemetry_wheel_2_msg.y=wheel_right->getVelocity();
-    pid_telemetry_wheel_2_msg.z=wheel_right->getDemandedVelocity();
+    pid_telemetry_wheel_2_msg.header.stamp = current_time;
+    pid_telemetry_wheel_2_msg.vector.x=wheel_right->getTargetVelocity();
+    pid_telemetry_wheel_2_msg.vector.y=wheel_right->getVelocity();
+    pid_telemetry_wheel_2_msg.vector.z=wheel_right->getDemandedVelocity();
     pid_telemetry_wheel_2_pub.publish(&pid_telemetry_wheel_2_msg);   
 
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionFromYaw(robot->getTheta()); //TODO REVIEW THIS THE ANGLE IS NOT CORRECT
@@ -272,14 +292,14 @@ void loop() {
     //BEGIN Ultrasonic
     ultrasonic_trans.header.frame_id = "/base_link";
     ultrasonic_trans.child_frame_id = "/ultrasound";
-    ultrasonic_trans.transform.translation.x = 0.0; 
+    ultrasonic_trans.transform.translation.x = 0.045; 
     ultrasonic_trans.transform.translation.y = 0.0; 
-    ultrasonic_trans.transform.translation.z = 0.0;
-    ultrasonic_trans.transform.rotation = tf::createQuaternionFromYaw(0.0); //TODO INCLUDE ORIENTATION + RELATIVE POSITION SENSOR.
+    ultrasonic_trans.transform.translation.z = 0.075;
+    ultrasonic_trans.transform.rotation = tf::createQuaternionFromYaw(robot->getSonarAngle()); //TODO INCLUDE ORIENTATION + RELATIVE POSITION SENSOR.
     ultrasonic_trans.header.stamp = current_time;
     broadcaster.sendTransform(ultrasonic_trans);
 
-    ultrasonic_msg.range = robot->getDistance(0);
+    ultrasonic_msg.range = robot->getDistance();
     ultrasonic_msg.header.stamp = current_time;
     pub_ultrasonic.publish(&ultrasonic_msg);    
     //END Ultrasonic
