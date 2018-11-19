@@ -15,9 +15,6 @@
 #include <RobotFactorySingleMotor.h>
 #include <RobotFactoryDualMotor.h>
 
-#define PIN_SONAR_TRIGGER 16
-#define PIN_SONAR_ECHO 15
-
 IPAddress server(192, 168, 1, 40); // IP address of the ROS server
 const uint16_t serverPort = 11411; // Port of the ROS serial server
 
@@ -169,6 +166,14 @@ void setup() {
   if (! nh.getParam("/robomat/robot_wheel_radious", &params_robot.robot_wheel_radious) ) 
     { params_robot.robot_wheel_radious = 0.0325;};
 
+  int pin_sonar_trigger, pin_sonar_echo, pin_servo;
+  if (! nh.getParam("/robomat/pin_sonar_trigger", &pin_sonar_trigger) ) 
+    { pin_sonar_trigger = 16;};
+  if (! nh.getParam("/robomat/pin_sonar_echo", &pin_sonar_echo) ) 
+    { pin_sonar_echo = 15;};
+  if (! nh.getParam("/robomat/pin_servo", &pin_servo) ) 
+    { pin_servo = 15;};
+
   if (robot_type == 1) {
 
     if (! nh.getParam("/robomat/pid_kp", &params_robot.pid_kp) ) 
@@ -217,20 +222,18 @@ void setup() {
   }
   
   //Servo
-  //Servo * servo = new Servo();
-  //servo->attach(13);
+  Servo * servo = new Servo();
+  servo->attach(pin_servo);
 
   //Sonar 
-  /*
   Sonar * sonar = new Sonar();
-  sonar->attachTrigger(PIN_SONAR_TRIGGER);
-  sonar->attachEcho(PIN_SONAR_ECHO);
+  sonar->attachTrigger(pin_sonar_trigger);
+  sonar->attachEcho(pin_sonar_echo);
   sonar->attachServo(servo);
 
   //Robot
   robot->attachSonar(sonar);
-  */
- }
+}
 
 void loop() {
   if (nh.connected()) {
