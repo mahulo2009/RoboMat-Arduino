@@ -12,7 +12,9 @@
 #include "network_connection.h"
 #include <DifferentialWheeledRobot.h>
 #include <Pid.h>
+#include <EncoderBase.h>
 #include <Encoder.h>
+#include <ArduinoDutySingleMotorHardwareController.h>
 #include <WheelEncoder.h>
 #include <Sonar.h>
 #include <Servo.h>
@@ -198,10 +200,13 @@ void setup() {
   Encoder * encoder_left = new Encoder(encoder_ticks_per_revoloution);
   encoder_left->attach(pin_encoder_left);
 
+  ArduinoDutySingleMotorHardwareController * controller_left = new ArduinoDutySingleMotorHardwareController(max_speed,power_min,power_max);
+  controller_left->attachPower(pin_power_left);
+  controller_left->attachDirection(pin_direction_left);
+
   //Wheel Left
-  wheel_left = new WheelEncoder(max_speed);
-  wheel_left->attachPower(pin_power_left,power_min,power_max);
-  wheel_left->attachDirection(pin_direction_left);
+  wheel_left = new WheelEncoder();
+  wheel_left->attachController(controller_left);
   wheel_left->attachEncoder(encoder_left);
   wheel_left->attachPid(pid_left);
   
@@ -217,10 +222,13 @@ void setup() {
   Encoder * encoder_right = new Encoder(encoder_ticks_per_revoloution);
   encoder_right->attach(pin_encoder_right);
 
+  ArduinoDutySingleMotorHardwareController * controller_right = new ArduinoDutySingleMotorHardwareController(max_speed,power_min,power_max);
+  controller_right->attachPower(pin_power_right);
+  controller_right->attachDirection(pin_direction_right);
+
   //Wheel Right
-  wheel_right = new WheelEncoder(max_speed);
-  wheel_right->attachPower(pin_power_right,power_min,power_max);
-  wheel_right->attachDirection(pin_direction_right);
+  wheel_right = new WheelEncoder();
+  wheel_right->attachController(controller_right);
   wheel_right->attachEncoder(encoder_right);
   wheel_right->attachPid(pid_right);
 
@@ -273,7 +281,7 @@ void loop() {
     odom_trans.transform.rotation = odom_quat;
     broadcaster.sendTransform(odom_trans);
  
-   //BEGIN odometry  
+    //BEGIN odometry  
     odom_nav_msg.header.stamp = current_time;
     odom_nav_msg.header.frame_id = "/odom";
     //set the position
