@@ -10,18 +10,13 @@
 #include <sensor_msgs/Range.h>
 #include <rosserial_arduino/Test.h>
 #include "network_connection.h"
+
 #include <DifferentialWheeledRobot.h>
-#include <Pid.h>
-#include <EncoderBase.h>
-#include <Encoder.h>
-#include <ArduinoDutySingleMotorHardwareController.h>
-#include <WheelEncoder.h>
-#include <Sonar.h>
-#include <Servo.h>
+#include <RobotFactorySingleMotor.h>
+#include <RobotFactoryDualMotor.h>
 
 #define PIN_SONAR_TRIGGER 16
 #define PIN_SONAR_ECHO 15
-
 
 IPAddress server(192, 168, 1, 40); // IP address of the ROS server
 const uint16_t serverPort = 11411; // Port of the ROS serial server
@@ -43,11 +38,13 @@ void setupWiFi() {
 //Robot
 DifferentialWheeledRobot * robot = 0;
 
+/*
 WheelEncoder * wheel_left;
 Pid * pid_left;
 
 WheelEncoder * wheel_right;
 Pid * pid_right;
+*/
 
 //Ros node handler
 ros::NodeHandle nh;
@@ -88,9 +85,9 @@ geometry_msgs::Twist odom_geometry_msg;
 ros::Time current_time = nh.now();
 ros::Time last_time = current_time;
 
-
 using rosserial_arduino::Test;
 void callback(const Test::Request & req, Test::Response & res){
+  /*
   res.output = "hello";
 
   float pid_kp, pid_ki, pid_kd;
@@ -101,7 +98,6 @@ void callback(const Test::Request & req, Test::Response & res){
   if (! nh.getParam("/robomat/pid_kd", &pid_kd) ) 
     { pid_kd = 0.0;};
 
-
   pid_left->reset();
   pid_left->setKp(pid_kp);
   pid_left->setKi(pid_ki);
@@ -110,6 +106,7 @@ void callback(const Test::Request & req, Test::Response & res){
   wheel_left->stop();
   delay(1000);
   wheel_left->move(18.0);
+  */
 }
 
 ros::ServiceServer<Test::Request, Test::Response> server_1("test_srv",&callback);
@@ -142,113 +139,98 @@ void setup() {
 
   while(!nh.connected()) {nh.spinOnce();}
 
-  float pid_kp, pid_ki, pid_kd;
-  if (! nh.getParam("/robomat/pid_kp", &pid_kp) ) 
-    { pid_kp = 1.0;};
-  if (! nh.getParam("/robomat/pid_ki", &pid_ki) ) 
-    { pid_ki = 0.0;};
-  if (! nh.getParam("/robomat/pid_kd", &pid_kd) ) 
-    { pid_kd = 0.0;};
+  int robot_type;
+  if (! nh.getParam("/robomat/robot_type", &robot_type) ) 
+    { robot_type = 1.0;};
 
-  int encoder_ticks_per_revoloution;
-  if (! nh.getParam("/robomat/encoder_ticks_per_revoloution", &encoder_ticks_per_revoloution) ) 
-    { encoder_ticks_per_revoloution = 21;};
+  params_t params_robot;
+  params_t params_left;
+  params_t params_right;
 
-  int pin_encoder_left,pin_encoder_right;
-  if (! nh.getParam("/robomat/pin_encoder_left", &pin_encoder_left) ) 
-    { pin_encoder_left = 12;};
-  if (! nh.getParam("/robomat/pin_encoder_right", &pin_encoder_right) ) 
-    { pin_encoder_left = 14;};
+  //max_speed
+  if (! nh.getParam("/robomat/max_speed", &params_robot.max_speed) ) 
+    { params_robot.max_speed = 11;};   
 
-  float max_speed;
-  if (! nh.getParam("/robomat/max_speed", &max_speed) ) 
-    { max_speed = 11;};   
+  //pin_power_left,pin_power_right
+  if (! nh.getParam("/robomat/pin_power_left", &params_left.pin_power) ) 
+    { params_left.pin_power = 4;};
+  if (! nh.getParam("/robomat/pin_power_right", &params_right.pin_power) ) 
+    { params_right.pin_power = 5;};
 
-  int pin_power_left,pin_power_right;
-  if (! nh.getParam("/robomat/pin_power_left", &pin_power_left) ) 
-    { pin_power_left = 4;};
-  if (! nh.getParam("/robomat/pin_power_right", &pin_power_right) ) 
-    { pin_power_right = 5;};
+  //power_min,power_max;
+  if (! nh.getParam("/robomat/power_min", &params_robot.power_min) ) 
+    { params_robot.power_min = 256;};
+  if (! nh.getParam("/robomat/power_max", &params_robot.power_max) ) 
+    { params_robot.power_max = 1023;};
 
-  int pin_direction_left,pin_direction_right;
-  if (! nh.getParam("/robomat/pin_direction_left", &pin_direction_left) ) 
-    { pin_direction_left = 2;};
-  if (! nh.getParam("/robomat/pin_direction_right", &pin_direction_right) ) 
-    { pin_direction_right = 0;};
+  //float robot_wheel_separation,robot_wheel_radious;
+  if (! nh.getParam("/robomat/robot_wheel_separation", &params_robot.robot_wheel_separation) ) 
+    { params_robot.robot_wheel_separation = 0.135;};
+  if (! nh.getParam("/robomat/robot_wheel_radious", &params_robot.robot_wheel_radious) ) 
+    { params_robot.robot_wheel_radious = 0.0325;};
 
-  int power_min,power_max;
-  if (! nh.getParam("/robomat/power_min", &power_min) ) 
-    { power_min = 256;};
-  if (! nh.getParam("/robomat/power_max", &power_max) ) 
-    { power_max = 1023;};
+  if (robot_type == 1) {
 
-  float robot_wheel_separation,robot_wheel_radious;
-  if (! nh.getParam("/robomat/robot_wheel_separation", &robot_wheel_separation) ) 
-    { robot_wheel_separation = 0.135;};
-  if (! nh.getParam("/robomat/robot_wheel_radious", &robot_wheel_radious) ) 
-    { robot_wheel_radious = 0.0325;};
+    if (! nh.getParam("/robomat/pid_kp", &params_robot.pid_kp) ) 
+      { params_robot.pid_kp = 1.0;};
+    if (! nh.getParam("/robomat/pid_ki", &params_robot.pid_ki) ) 
+      { params_robot.pid_ki = 0.0;};
+    if (! nh.getParam("/robomat/pid_kd", &params_robot.pid_kd) ) 
+      { params_robot.pid_kd = 0.0;};
+
+    //encoder_ticks_per_revoloution;
+    if (! nh.getParam("/robomat/encoder_ticks_per_revoloution", &params_robot.encoder_ticks_per_revoloution) ) 
+      { params_robot.encoder_ticks_per_revoloution = 21;};
+
+    //int pin_encoder_left,pin_encoder_right;
+    if (! nh.getParam("/robomat/pin_encoder_left", &params_left.pin_encoder) ) 
+      { params_left.pin_encoder = 12;};
+    if (! nh.getParam("/robomat/pin_encoder_right", &params_right.pin_encoder) ) 
+      { params_right.pin_encoder = 14;};
+
+    //int pin_direction_left,pin_direction_right;
+    if (! nh.getParam("/robomat/pin_direction_left", &params_left.pin_direction) ) 
+      { params_left.pin_direction = 2;};
+    if (! nh.getParam("/robomat/pin_direction_right", &params_right.pin_direction) ) 
+      { params_right.pin_direction = 0;};
+
+    //dinamic cast not available on arduino.
+    RobotFactory * factory = new  RobotFactorySingleMotor(); 
+    robot = (DifferentialWheeledRobot* ) ( factory->assembly(params_robot,params_left,params_right) ) ;
+
+  } else if (robot_type == 2) {
+    //int pin_direction_left_1,pin_direction_left_2;
+    if (! nh.getParam("/robomat/pin_direction_left_1", &params_left.pin_direction_1) ) 
+      { params_left.pin_direction_1 = 2;};          
+    if (! nh.getParam("/robomat/pin_direction_left_2", &params_left.pin_direction_2) ) 
+      { params_left.pin_direction_2 = 15;};
+
+    //int pin_direction_right_1,pin_direction_right_2;
+    if (! nh.getParam("/robomat/pin_direction_right_1", &params_right.pin_direction_1) ) 
+      { params_right.pin_direction_1 = 12;};   
+    if (! nh.getParam("/robomat/pin_direction_right_2", &params_right.pin_direction_2) ) 
+      { params_right.pin_direction_2 = 14;};
+
+    //dinamic cast not available on arduino.
+    RobotFactory * factory = new  RobotFactoryDualMotor(); 
+    robot = (DifferentialWheeledRobot * ) ( factory->assembly(params_robot,params_left,params_right) ) ;
+  }
   
-  //Pid Left
-  pid_left = new Pid();
-  pid_left->setMaxWindup(max_speed); //TODO
-  pid_left->setAlpha(1.0);
-  pid_left->setKp(pid_kp);
-  pid_left->setKi(pid_ki);
-  pid_left->setKd(pid_kd);
-
-  //Encoder Left
-  Encoder * encoder_left = new Encoder(encoder_ticks_per_revoloution);
-  encoder_left->attach(pin_encoder_left);
-
-  ArduinoDutySingleMotorHardwareController * controller_left = new ArduinoDutySingleMotorHardwareController(max_speed,power_min,power_max);
-  controller_left->attachPower(pin_power_left);
-  controller_left->attachDirection(pin_direction_left);
-
-  //Wheel Left
-  wheel_left = new WheelEncoder();
-  wheel_left->attachController(controller_left);
-  wheel_left->attachEncoder(encoder_left);
-  wheel_left->attachPid(pid_left);
-  
-  //Pid Right
-  pid_right = new Pid();
-  pid_right->setMaxWindup(max_speed); //TODO
-  pid_right->setAlpha(1.0);
-  pid_right->setKp(pid_kp);
-  pid_right->setKi(pid_ki);
-  pid_right->setKd(pid_kd);
-  
-  //Encoder Right
-  Encoder * encoder_right = new Encoder(encoder_ticks_per_revoloution);
-  encoder_right->attach(pin_encoder_right);
-
-  ArduinoDutySingleMotorHardwareController * controller_right = new ArduinoDutySingleMotorHardwareController(max_speed,power_min,power_max);
-  controller_right->attachPower(pin_power_right);
-  controller_right->attachDirection(pin_direction_right);
-
-  //Wheel Right
-  wheel_right = new WheelEncoder();
-  wheel_right->attachController(controller_right);
-  wheel_right->attachEncoder(encoder_right);
-  wheel_right->attachPid(pid_right);
-
   //Servo
-  Servo * servo = new Servo();
-  servo->attach(13);
+  //Servo * servo = new Servo();
+  //servo->attach(13);
 
   //Sonar 
+  /*
   Sonar * sonar = new Sonar();
   sonar->attachTrigger(PIN_SONAR_TRIGGER);
   sonar->attachEcho(PIN_SONAR_ECHO);
   sonar->attachServo(servo);
 
   //Robot
-  robot = new DifferentialWheeledRobot(robot_wheel_separation,robot_wheel_radious);
-  robot->attachLeftWheel(wheel_left); 
-  robot->attachRightWheel(wheel_right); 
   robot->attachSonar(sonar);
-  
-}
+  */
+ }
 
 void loop() {
   if (nh.connected()) {
@@ -257,7 +239,7 @@ void loop() {
     double dt = current_time.toSec() - last_time.toSec();
     
     robot->update(dt);
-
+/*
     pid_telemetry_wheel_1_msg.header.stamp = current_time;
     pid_telemetry_wheel_1_msg.vector.x=wheel_left->getTargetVelocity();
     pid_telemetry_wheel_1_msg.vector.y=wheel_left->getVelocity();
@@ -270,6 +252,7 @@ void loop() {
     pid_telemetry_wheel_2_msg.vector.z=wheel_right->getDemandedVelocity();
     pid_telemetry_wheel_2_pub.publish(&pid_telemetry_wheel_2_msg);   
 
+*/
     geometry_msgs::Quaternion odom_quat = tf::createQuaternionFromYaw(robot->getTheta()); //TODO REVIEW THIS THE ANGLE IS NOT CORRECT
     // tf odom->base_link
     odom_trans.header.stamp = current_time;
@@ -320,4 +303,3 @@ void loop() {
     delay(100);  //TODO REDUCE THIS
   } 
 }
-
