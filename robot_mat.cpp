@@ -4,10 +4,9 @@
 #include <RosAdapterRobot.h>
 #include <RosAdapterSonar.h>
 #include <DifferentialWheeledRobot.h>
+
 #include <RobotFactorySingleMotor.h> //TODO WHY I CAN NOT REMOVE THIS
 #include <RobotFactoryDualMotor.h>
-#include <RosConfigArduinoDutyDualMotor.h>
-#include <RosConfigArduinoDutySingleMotor.h>
 #include <RosConfigSonar.h>
 #include <Sonar.h>
 #include <Servo.h>
@@ -28,13 +27,12 @@ void setupWiFi() {
   Serial.println(" to access client");
 }
 
-
-
 IPAddress server(192, 168, 1, 40); // IP address of the ROS server
 const uint16_t serverPort = 11411; // Port of the ROS serial server
 
 //Robot
 RosController  * ros_controller = 0;
+RobotBase * robot = 0;
 
 void setup() {
 
@@ -44,8 +42,6 @@ void setup() {
 
   delay(2000);
 
-  //TODO SPINONE MUST BE CALLED TO GET SOMETHING FROM SERVER
-
   RosAdapterRobot * ros_adapter_robot = new RosAdapterRobot();
   RosAdapterSonar * ros_adapter_soner = new RosAdapterSonar();
   
@@ -53,7 +49,7 @@ void setup() {
   ros_controller->addNode(ros_adapter_robot);
   ros_controller->addNode(ros_adapter_soner);
   ros_controller->init();
-  
+
   #ifdef ROBOT_SINGLE
   RosConfigArduinoDutySingleMotor * ros_config_motor = new RosConfigArduinoDutySingleMotor();
   #else
@@ -62,16 +58,16 @@ void setup() {
   RosConfigSonar * ros_config_sonar = new RosConfigSonar();
    
   ros_controller->readConfiguration(ros_config_motor);
-  ros_controller->readConfiguration(ros_config_sonar);
- 
+  ros_controller->readConfiguration(ros_config_sonar); 
+       
   #ifdef ROBOT_SINGLE
   RobotFactory * factory = new  RobotFactorySingleMotor(ros_config_motor); 
   #else
-  RosConfigArduinoDutyDualMotor * ros_config_motor = new RosConfigArduinoDutyDualMotor();  
+  RobotFactory * factory = new  RobotFactoryDualMotor(ros_config_motor); 
   #endif
-
-  DifferentialWheeledRobot * robot = (DifferentialWheeledRobot * ) ( factory->assembly() ) ;
- 
+    
+  robot =  factory->assembly();
+  
   ros_adapter_robot->attachRobot(robot);
 
   //Servo
@@ -85,9 +81,19 @@ void setup() {
   sonar->attachServo(servo);
 
   ros_adapter_soner->attachSonar(sonar);
- }
+}
 
 void loop() {
-  ros_controller->update();
+    
+  if (ros_controller != 0)
+  {
+    ros_controller->update();
+  }
+
+  if (robot != 0) 
+  {
+    robot->update(0.1); 
+  }
+
 }
 
