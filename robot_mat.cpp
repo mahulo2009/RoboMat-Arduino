@@ -3,9 +3,10 @@
 #include <RosController.h>
 #include <RosAdapterRobot.h>
 #include <RosAdapterSonar.h>
+#include <RosAdapterPid.h>
 #include <DifferentialWheeledRobot.h>
 
-#include <RobotFactorySingleMotor.h> //TODO WHY I CAN NOT REMOVE THIS
+#include <RobotFactorySingleMotor.h> 
 #include <RobotFactoryDualMotor.h>
 #include <RosConfigSonar.h>
 #include <Sonar.h>
@@ -39,15 +40,15 @@ void setup() {
   Serial.begin(115200);
 
   setupWiFi();
-
-  delay(2000);
-
+  
   RosAdapterRobot * ros_adapter_robot = new RosAdapterRobot();
   RosAdapterSonar * ros_adapter_soner = new RosAdapterSonar();
+  RosAdapterPid * ros_adapter_pid = new RosAdapterPid();
   
   ros_controller = new RosController(&server,serverPort);
   ros_controller->addNode(ros_adapter_robot);
   ros_controller->addNode(ros_adapter_soner);
+  ros_controller->addNode(ros_adapter_pid);
   ros_controller->init();
 
   #ifdef ROBOT_SINGLE
@@ -69,6 +70,7 @@ void setup() {
   robot =  factory->assembly();
   
   ros_adapter_robot->attachRobot(robot);
+  ros_adapter_pid->attachWheel(robot->getWheel(0));
 
   //Servo
   Servo * servo = new Servo();
